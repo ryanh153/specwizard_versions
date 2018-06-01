@@ -174,6 +174,8 @@ contains
            z_sig_bin = read_real(inline)
         else  if (parm == 'z_sig_dex') then
            z_sig_dex = read_real(inline)
+        else if (parm == 'output_ids_to_file') then
+          output_ids_to_file = read_logical(inline(first(3):last(3)))
         else if (parm == 'doH1') then
           doH1 = read_logical(inline(first(3):last(3)))
         else if (parm == 'doHe2') then
@@ -1401,7 +1403,7 @@ end subroutine zero_spectra
 
 
 
-subroutine projectdata()
+subroutine projectdata(file_number)
   ! Computes SPH estimates of the density, temperature and line of
   ! sight velocities. Then calls computespectrum to compute spectra.
   use numbers
@@ -1418,6 +1420,8 @@ subroutine projectdata()
   implicit none 
   !
   ! local variables
+  character(len=28)          :: filename
+  integer(kind=singleI), intent(in)  :: file_number
   integer(kind=singleI) :: i, ioff, iiz, j, iz, ii, ion,iz1, iz2, h1_index=-1, si2_index=-1
   real(kind=doubleR)    :: x_physical_hold, y_physical_hold, z_physical_hold
   real(kind=doubleR)    :: xx, yy, zz, hh, h2, b, b2, hinv2, hinv3, vr, zmingrid, zmaxgrid, dzinv, dzgrid, box, box_2
@@ -1428,6 +1432,12 @@ subroutine projectdata()
   integer(kind=singleI) ::  c2_index=-1, c3_index=-1, c4_index=-1, o6_index=-1, o7_index=-1, o8_index=-1
   integer(kind=singleI) ::  mg2_index=-1, si3_index=-1, si4_index=-1, n5_index=-1
 #endif
+
+  !!! I added these
+  integer(kind=singleI) :: num_encountered
+  integer(kind=doubleI), allocatable :: final_matched_partids(:)
+  !!!
+
   !
   ! read urchin flags
   do ion=1, nion
@@ -1555,21 +1565,11 @@ subroutine projectdata()
     z_physical_hold = x_physical
   endif
   write(*,*) "physical_hold= ", x_physical_hold, y_physical_hold, z_physical_hold 
-!  print *, ' '
-!  print *, 'in subroutine project data, asking printing value of NGas', NGas
-!  print *, ' '
-!  print *, 'in subroutine project data, asking what Position is'
-!  print *, ' '
-!  print *, 'shape of position'
-!  print *, ' '
-!  print *, shape(Position)
-!  print *, ' '
 
-!  print *, 'particle ids just came up, in subroutine, project data, below are the array and then the shape'
-!  print *, ' '
-!  print *, shape(PartID)
-!  print *, count(PartID/=0)
-!  print *, ' '
+  if (allocated(matched_partids)) deallocate(matched_partids)
+  allocate(matched_partids(NGas))
+  matched_partids = 0
+
   particle_loop: do i = 1, NGas
     !
     !!!xx = ShiftedPosition(1,i)
@@ -1615,6 +1615,8 @@ subroutine projectdata()
     !
     if(impactparameter .le. hh) then
        ncontr = ncontr + 1
+       matched_partids(int(ncontr)) = partid(i)
+    
 !        write (1,100) PartID(i), xx, yy, zz, hh
 ! 100 format(I16,1x,4(e12.4,1x))
        !
@@ -1811,9 +1813,28 @@ subroutine projectdata()
     endif ! b le hh
     !
   enddo particle_loop
-!  print *, 'getting the value of ncontr to see what it was'
-!  print *, ncontr
-!  print *, ' '
+
+  if (output_ids_to_file) then
+
+    num_encountered = 0
+    if (allocated(final_matched_partids)) deallocate(final_matched_partids)
+    allocate(final_matched_partids(ncontr))
+    final_matched_partids = 0
+
+    write(filename, '(A,I3.3,A)') 'eagle_particles_hit_',file_number,'.txt'
+
+    open(unit = 1, file=filename) 
+    encountered_ids_loop: do i= 1, NGas
+      if (matched_partids(i) .ne. 0) then
+        num_encountered = num_encountered + 1
+        final_matched_partids(int(num_encountered)) = matched_partids(i)
+        write(1,*) matched_partids(i)
+      endif
+    enddo encountered_ids_loop
+    close(1)
+
+  endif
+
   !
   ! Mass was computed in M_sun (was used to compute particle nr),
   ! distance was in proper Mpc, conversion factor to n (cm^-3) is
@@ -1842,6 +1863,7 @@ subroutine projectdata()
     endif
   enddo
   !
+
   return
 end subroutine projectdata
 
@@ -2033,11 +2055,6 @@ subroutine computespectrum(nveloc,ion,vhubble,rho_tot,cdens,vpecul,nion,temperat
   mass    = ion_mass(ion)       ! mass of ion (g)
   !
   ! Cross section in cm^2:
-
-!  print *, 'in compute spectrum'
-!  print *, 'size of ion', shape(ion)
-!  print *, 'size of tau', shape(tau)
-!  print *, ''
 
   if(ions(ion) .eq. '21cm') then
     !For 21cm emission we use Equation 3 from Furlanetto (2008)
@@ -4404,7 +4421,7 @@ subroutine read_full_snapshot()
   !
   integer                  :: files, NTotal, NPart_This_file, np
   !
-!print *, 'in read_snapshot'
+
 #ifdef READREGION
   type (eaglesnapshot) :: snapinfo
 #endif
@@ -4532,13 +4549,9 @@ subroutine read_full_snapshot()
      write (*,*)"Ngas to read = ",Ngas
   endif
 
-!  print *, 'above allocate particles data'
-
   ! allocate particle data
   call allocate_particledata()
 
-!  print *, 'above read variables'
-!  pritn *, ' '
   ! read variables
   if (MyPE == 0) &
        write (*,*) ' reading position'
@@ -4558,10 +4571,6 @@ subroutine read_full_snapshot()
   if (MyPE == 0) &
        write (*,*) ' reading ID'
   np = read_dataset(snapinfo, 0, "ParticleIDs", PartID)
-!  print *, 'in subroutine read_full_snapshot, just below where partID is created'
-!  print *, 'shape of array', shape(PartID)
-!  print *, 'number of non-zero elements', count(PartID/=0)
-!  print *, ' '
 
   if(urchin) then
      stop ' not implemented urchin'
@@ -4678,6 +4687,16 @@ subroutine read_full_snapshot()
      VarName = trim('PartType0')//'/Density/CGSConversionFactor'
      call hdf5_read_attribute(file_handle,VarName,Dens_cgs_unit)
      !
+     VarName = trim('PartType0')//'/ParticleIDs'        
+     call hdf5_read_data(file_handle, VarName, partid(NTotal+1:NTotal+Npart_this_file))
+     VarName = trim('PartType0')//'/Density/h-scale-exponent'
+     !call hdf5_read_attribute(file_handle,VarName,Dens_h_exp)
+     !VarName = trim('PartType0')//'/Density/aexp-scale-exponent'
+     !call hdf5_read_attribute(file_handle,VarName,Dens_aexp_exp)
+     !VarName = trim('PartType0')//'/Density/CGSConversionFactor'
+     !call hdf5_read_attribute(file_handle,VarName,Dens_cgs_unit)
+     !
+
 #ifndef SNIPSHOT
      VarName = trim('PartType0')//'/StarFormationRate'        
      call hdf5_read_data(file_handle,VarName,StarFormationRate(NTotal+1:NTotal+Npart_this_file))
@@ -4966,6 +4985,9 @@ subroutine allocate_particledata
      if(allocated(StarFormationRate)) deallocate(StarFormationRate)
      if(allocated(Boundary)) deallocate(Boundary)
      if(allocated(partid)) deallocate(partid)
+
+     !!! I'm trying a thing here. Adding a new array for partids that are matched, it's also added to the allocation list below, after partid
+     if(allocated(matched_partids)) deallocate(matched_partids)
 #ifdef CHEMARRAY
      if(allocated(HI)) deallocate(HI)     
      if(allocated(CII)) deallocate(CII)
@@ -4983,7 +5005,7 @@ subroutine allocate_particledata
      !
      allocate(Mass(NGas),ParticleDensity(Ngas),ParticleSmoothingLength(NGas),ParticleTemperature(NGas),&
        Metallicity(NGas),MetallicityInSolar(NGas),ZMetal(NGas),ZRelat(NGas),StarFormationRate(Ngas),&
-       ParticleNeutralHFraction(Ngas),ParticleMolecularHFraction(Ngas),PartID(Ngas),stat=AllocateStatus)
+       ParticleNeutralHFraction(Ngas),ParticleMolecularHFraction(Ngas),PartID(Ngas), matched_partids(Ngas), stat=AllocateStatus)
 #ifdef CHEMARRAY
      allocate(HI(NGas),stat=AllocateStatus)
      allocate(CII(NGas),stat=AllocateStatus)

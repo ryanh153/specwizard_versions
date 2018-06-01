@@ -188,6 +188,7 @@ program specwizard
           endif
           !
           ! project SPH data to sightline
+          ! print *, 'Above first projectdata call (line 191)'
           call projectdata()
           !
           ! Compute individual spectrum for each ion
@@ -368,7 +369,10 @@ program specwizard
         endif
         !
         ! project SPH data to sightline
-        call projectdata()
+        ! print *, 'above second projectdata (line 372)'
+        ! print *, los_number+1
+        ! print *, ' '
+        call projectdata(los_number+1, outputdir)
         ncontribute(los_number+1) = ncontr
         !
         ! compute individual spectrum for each ion

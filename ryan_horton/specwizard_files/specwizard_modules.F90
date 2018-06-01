@@ -590,8 +590,12 @@ module particledata
   integer(kind=singleI) :: NGas
 #ifdef EAGLE
   integer(kind=doubleI), allocatable :: PartID(:)
+  integer(kind=doubleI), allocatable :: matched_partids(:)
+
 #else
   integer(kind=singleI), allocatable :: PartID(:)
+  integer(kind=singleI), allocatable :: matched_partids(:)
+
 #endif
   !
 #ifdef EAGLE
