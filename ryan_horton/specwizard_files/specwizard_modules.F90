@@ -386,6 +386,8 @@ module spectra
   !
   ! number of lines to be included in Lyman-series, <= nlyman_all=31
   integer(kind=singleI) :: nLyman=invalid_I
+  ! output particles ids of all particles that overlap the los
+  logical :: output_ids_to_file = .false.
   !
   ! amplitude of rescaling of ionising background
   real(kind=doubleR) :: ibfactor = invalid_R
